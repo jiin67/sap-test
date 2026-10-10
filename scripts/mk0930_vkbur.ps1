@@ -1,0 +1,13 @@
+# mk0930_vkbur.ps1 : ZCRM058 이 상담건 센터가 빈 건도 대리점 소속 센터(KNVV)로 집계하는지 확인 (2026-09-30)
+#   ZCRM_CICSVC_NEW 에만 넣는다(058/060 이 읽는 테이블). 대리점 100068 경동성남동부대리점(KNVV CT13), 일반 무상, 기사명 있음(템플릿), 조치일자 2026.09.30
+#   2026093090001 = 상담건 센터(VKBUR) 공백 / 2026093090002 = VKBUR CT13 (대조)
+Set-Location C:\sap-test
+[Console]::OutputEncoding = [Text.Encoding]::GetEncoding(949)
+$NEW = 'results\raw\S12_ZCRM_CICSVC_NEW_tpl_svcnew.tsv'
+$C = 'RSLTDATE=2026.09.30;REGDATE=2026.09.30;PRDDATE_NEW=2026.09.30;NAME1=ZTEST_20260930V;CITY1=ZTEST_20260930V;ERNAM=ZTEST0930V;AENAM=ZTEST0930V;ERDAT=2026.09.30;AEDAT=2026.09.30;KUNNR_SVC=100068;SVCNAME=ZTEST_성남동부대리점;SUBS_TYPE=;SUBSWRTMONTH=0;WRTDATE=;NIGHTWEEK=D'
+$ops = @(
+    "ins|ZCRM_CICSVC_NEW|2026093090001|$NEW|$C;VKBUR=;TAGNO=9931",
+    "ins|ZCRM_CICSVC_NEW|2026093090002|$NEW|$C;VKBUR=CT13;TAGNO=9932"
+)
+cscript //nologo scripts\S19_se16n_insert.vbs v30_new @ops
+"exit=$LASTEXITCODE"

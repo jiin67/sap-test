@@ -1,0 +1,177 @@
+﻿D-10 수정안 (B안) - ZCRM058S 구독 무상지원금 = 기술료 + 출장비                 2026-10-03
+=====================================================================================
+대상  ZCRMR058_1 (ZCRM058S/058A), ZCRMR060_1 (ZCRM060S/060A), 테이블 ZCRM_ASSPTFEEH1
+결정  2026-10-03 B안 확정 : 구독(S) 대리점 무상지원금 = 기술료(MAXTECHPRICE) + 출장비(TRIPPRICE).
+      건수 단가(야간·심야·주간·공휴일)는 구독에서 지급하지 않는다. 일반(058A)은 기존 그대로.
+전제  ① 전표 계정은 지금처럼 S01 → 5328170 한 줄  ② 기술료·출장비 합이 0 인 대리점은 확정·전표 대상에서 제외
+      ③ 금액 원천은 ZCRM_CICCOST_M 의 MAXTECHPRICE / TRIPPRICE (ZCRM185 가 쓰는 SUB 92000000/92000001 과 같은 값)
+      → 셋 중 다르게 가져갈 것이 있으면 알려 주세요.
+
+-------------------------------------------------------------------------------------
+1. 기존 로직 vs 변경 로직 (테스트 문서에도 이 표를 그대로 싣는다)
+-------------------------------------------------------------------------------------
+항목                  | 기존 로직 (2026-10-02 KDQ)                         | 변경 로직 (B안)                                        | 소스 위치                    | 화면에서 보이는 차이
+----------------------+----------------------------------------------------+--------------------------------------------------------+------------------------------+------------------------------------------
+구독 지원금 금액      | 건수 × 단가 (야간+심야+주간+공휴일). 기술료·출장비는 | 기술료 + 출장비. 건수 단가는 금액에 넣지 않음           | ZCRMR058_1F01 ZF_APPLY_COST  | 058S 합계: 5,000 → 30,000 (013 기준, 기술료 10,000+출장비 20,000)
+                      | 화면에 보여 주기만 함                               |                                                        | ZCRMR060_1F01 1532~1553      | 060S 합계금액 동일
+확정(헤더 저장)       | ASSPTFEE 만 저장                                   | ASSPTFEE(=기술료+출장비) + MAXTECHPRICE + TRIPPRICE 저장 | ZCRMR058_1F01 SET_MCOMP 367~394 | SE16N ZCRM_ASSPTFEEH1 에 두 칸 추가
+확정 후 재조회        | 헤더 ASSPTFEE 만 읽고 기술료·출장비는 매번 CIC 값 재합산 | 헤더에 저장된 세 값을 읽음 (CIC 값이 바뀌어도 확정액 유지) | ZCRMR058_1F01 32~39, 69~73, 101~105 | 확정 뒤 CIC 값이 바뀌어도 화면 금액 불변
+전표 금액             | ASSPTFEE(건수 단가)                                | ASSPTFEE(기술료+출장비)                                 | ZCRMR058_1F01 530~548 (코드 변경 없음) | FI 전표 금액 5,000 → 30,000
+0 원 대리점           | 없음 (건수가 있으면 항상 5,000 이상)                 | 기술료+출장비 = 0 이면 확정 불가 메시지                  | SET_MCOMP                    | '지급액이 0 인 대리점은 확정할 수 없습니다'
+058A(일반)            | 건수 × 단가                                        | 변경 없음                                              | gv_subs_mode 분기            | 없음
+060S 금액 행          | 야간/심야/주간/공휴일 금액 + 합계 = 그 합            | 야간/심야/주간/공휴일 금액은 0, 합계 = 기술료+출장비      | ZCRMR060_1F01 1532~1553      | 금액 행의 단가 칸이 0 으로 보임 (건수 행은 그대로)
+
+-------------------------------------------------------------------------------------
+2. 수정 위치별 코드
+-------------------------------------------------------------------------------------
+(1) DDIC  ZCRM_ASSPTFEEH1  - 컬럼 2개 추가 (SE11, 코드보다 먼저 이관)
+    MAXTECHPRICE   CURR 15,2  참조 WAERS   "기술료(구독)
+    TRIPPRICE      CURR 15,2  참조 WAERS   "출장비(구독)
+    ※ 키 변경 없음 → 테이블 변환 없이 활성화. 운영 이관 때 SE14 상태 확인.
+
+(2) ZCRMR060_1F01  1532~1553  "기술료/출장비 반영"  - 구독 모드 금액 계산을 대체
+    기존:
+      IF gt_data1-line_idx = 999.
+        CLEAR: gt_data1-maxtechprice, gt_data1-tripprice.
+        LOOP AT gt_cost_sum2 WHERE kunnr = gt_data1-kunnr.
+          gt_data1-maxtechprice = gt_data1-maxtechprice + gt_cost_sum2-maxtechprice.
+          gt_data1-tripprice    = gt_data1-tripprice    + gt_cost_sum2-tripprice.
+        ENDLOOP.
+        MODIFY gt_data1.
+      ELSEIF gt_data1-line_idx = 2.
+        READ TABLE gt_cost_sum2 WITH KEY kunnr = gt_data1-kunnr techname = gt_data1-techname.
+        IF sy-subrc = 0.
+          gt_data1-maxtechprice = gt_cost_sum2-maxtechprice.
+          gt_data1-tripprice    = gt_cost_sum2-tripprice.
+          MODIFY gt_data1.
+        ENDIF.
+      ENDIF.
+    변경 (각 분기의 MODIFY 직전에 추가):
+      IF gt_data1-line_idx = 999.
+        ...(합산 LOOP 그대로)...
+**<<SR03000035400 D-10 (B안) 구독 지원금 = 기술료 + 출장비, 건수 단가 제외
+        CLEAR: gt_data1-night, gt_data1-deepnight, gt_data1-weekday, gt_data1-holiday.
+        gt_data1-assptfee = gt_data1-maxtechprice + gt_data1-tripprice.
+**>>SR03000035400 D-10
+        MODIFY gt_data1.
+      ELSEIF gt_data1-line_idx = 2.
+        READ TABLE gt_cost_sum2 ... .
+        IF sy-subrc = 0.
+          gt_data1-maxtechprice = gt_cost_sum2-maxtechprice.
+          gt_data1-tripprice    = gt_cost_sum2-tripprice.
+        ENDIF.
+**<<SR03000035400 D-10 (B안)
+        CLEAR: gt_data1-night, gt_data1-deepnight, gt_data1-weekday, gt_data1-holiday.
+        gt_data1-assptfee = gt_data1-maxtechprice + gt_data1-tripprice.
+**>>SR03000035400 D-10
+        MODIFY gt_data1.
+      ENDIF.
+    ※ line_idx = 2 는 금액 행(기사별), 999 는 합계 행. 건수 행(line_idx = 1)은 손대지 않아 지원금대상건수는 그대로 보인다.
+    ※ READ 실패(기술료·출장비 없음)인 기사 행도 assptfee 를 0 으로 맞추기 위해 CLEAR/계산은 IF 밖에 둔다.
+    ※ 이 블록은 ZCRM058S 도 같이 쓴다(058 이 060 의 GET_DATA 를 INCLUDE). 058 의 gt_data_total 은 83~85행에서
+       line_idx = 999 행을 MOVE-CORRESPONDING 하므로 여기서 계산한 assptfee 가 그대로 넘어간다.
+
+(3) ZCRMR058_1F01  ZF_APPLY_COST 1582~1590  - 미확정 건만 계산, 확정 건은 헤더값 유지
+    기존:
+      FORM zf_apply_cost.
+        CHECK gv_subs_mode = 'X'.
+        CLEAR : gt_data_total-maxtechprice, gt_data_total-tripprice.
+        READ TABLE gt_cost_sum WITH KEY kunnr = gt_data_total-kunnr.
+        IF sy-subrc = 0.
+          gt_data_total-maxtechprice = gt_cost_sum-maxtechprice.
+          gt_data_total-tripprice    = gt_cost_sum-tripprice.
+        ENDIF.
+      ENDFORM.
+    변경:
+      FORM zf_apply_cost.
+        CHECK gv_subs_mode = 'X'.
+**<<SR03000035400 D-10 (B안) 확정된 건(노랑·초록)은 헤더에 저장된 금액을 쓴다
+        CHECK gt_data_total-zicon = icon_led_red.
+**>>SR03000035400 D-10
+        CLEAR : gt_data_total-maxtechprice, gt_data_total-tripprice.
+        READ TABLE gt_cost_sum WITH KEY kunnr = gt_data_total-kunnr.
+        IF sy-subrc = 0.
+          gt_data_total-maxtechprice = gt_cost_sum-maxtechprice.
+          gt_data_total-tripprice    = gt_cost_sum-tripprice.
+        ENDIF.
+**<<SR03000035400 D-10 (B안) 구독 지원금 = 기술료 + 출장비
+        gt_data_total-assptfee = gt_data_total-maxtechprice + gt_data_total-tripprice.
+**>>SR03000035400 D-10
+      ENDFORM.
+    ※ 주의: 조회 243~274행(두 번째 LOOP, 확정 데이터 기준 조회)에서도 PERFORM zf_apply_cost 를 부르므로 CHECK 가 꼭 필요하다.
+       현재는 확정 뒤에도 매번 CIC 값을 다시 읽어 와서, CIC 가 나중에 바뀌면 확정액과 화면이 달라진다.
+
+(4) ZCRMR058_1F01  확정헤더 조회에 두 필드 추가
+    32~39행  lt_feeh 선언에
+      maxtechprice TYPE zcrm_assptfeeh1-maxtechprice,
+      tripprice    TYPE zcrm_assptfeeh1-tripprice,
+    69행  SELECT kunnr assptfee cfdate cfdate1 belnr budat maxtechprice tripprice
+    101~105행 (ELSE 분기) 에
+      gt_data_total-maxtechprice = lt_feeh-maxtechprice.
+      gt_data_total-tripprice    = lt_feeh-tripprice.
+    ※ 229~233행 두 번째 조회(SELECT * ... FROM zcrm_assptfeeh1 INTO CORRESPONDING FIELDS OF TABLE gt_data_total)는
+       필드명이 같으므로 컬럼만 추가하면 자동으로 들어온다.
+
+(5) ZCRMR058_1F01  SET_MCOMP 367~394  - 확정 저장
+    373행 아래에 추가:
+**<<SR03000035400 D-10 (B안)
+      IF gv_subs_mode = 'X'.
+        IF gt_data_total-maxtechprice + gt_data_total-tripprice = 0.
+          MESSAGE e000(zcrm) WITH '대리점' gt_data_total-kunnr '지급액(기술료+출장비)이 0 입니다'.   "메시지 클래스·번호는 기존 것으로
+          EXIT.
+        ENDIF.
+        lt_assptfeeh1-maxtechprice = gt_data_total-maxtechprice.
+        lt_assptfeeh1-tripprice    = gt_data_total-tripprice.
+      ENDIF.
+**>>SR03000035400 D-10
+    ※ 'MESSAGE e… EXIT' 패턴은 341~344행(e050)과 같다. 0 원 대리점을 그냥 건너뛰고 나머지만 확정하려면 EXIT 대신 CONTINUE.
+
+(6) ZCRMR058_1F01  전표 524~559  - 코드 변경 없음
+    lv_wrbtr = gt_data_total-assptfee 가 이제 기술료+출장비 합이므로 그대로 전기된다.
+    (안전장치) 511~520행 검증 LOOP 에 아래를 넣으면 0 원 전표 시도를 막는다:
+      ELSEIF gv_subs_mode = 'X' AND gt_data_total-assptfee = 0.
+        MESSAGE e000(zcrm) WITH '지급액 0 원 대리점' gt_data_total-kunnr. EXIT.
+
+(7) ZCRMR058_1C01 / ZCRMR060_1C01 (선택)  - 구독 화면에서 야간·심야·주간·공휴일 '금액' 컬럼
+    (2)에서 0 으로 만들어 보여 주는 것으로 충분하면 변경 없음. 아예 숨기려면 1012~1020행(058) / 937~943행(060)의
+    NO_OUT 처리와 같은 LOOP 로 'NIGHT' 'DEEPNIGHT' 'WEEKDAY' 'HOLIDAY' 를 구독 모드에서 숨긴다.
+    단, 건수 행(line_idx 1)도 같은 컬럼을 쓰므로 숨기면 건수도 안 보인다 → 권장: 숨기지 않고 0 표시.
+
+(8) 영향 없음 확인
+    - 058A(일반): 모든 변경이 gv_subs_mode = 'X' 안에 있음.
+    - 취소(449 DELETE)·전표삭제(681)·대리점확정(862)·확정취소(919): D-08 때 subs_type 조건이 이미 있어 추가 변경 없음.
+    - ZCRM_ASSPTFEEITM 은 확정 FORM 에서 쓰지 않는다(311행 선언만) → 손대지 않음.
+
+-------------------------------------------------------------------------------------
+3. 반영 후 테스트 (D-10 재테스트, v1.02)
+-------------------------------------------------------------------------------------
+데이터  상담 2026100290013 (대리점 100085 / CT19, 구독) - ZCRM_CICCOST_M 에 기술료 10,000 / 출장비 20,000 이 들어 있음.
+        현재 확정(ASSPTFEE 5,000) + 전표 3100069979 상태.
+순서
+  1. ZCRM058S 2026.10 CT19 100085 → 선택 → 일괄회계전표삭제 → 구독 무상 기술료/출장비 취소   (기존 5,000 확정 해제)
+     ※ 취소가 'CIC 확정일 있음' 으로 막히면 SE16N 으로 ZCRM_ASSPTFEEH1 100085/S 행을 지운다(테스트 행).
+  2. 다시 조회 → 합계 30,000 (주간 0 · 기술료 10,000 · 출장비 20,000) 확인
+  3. 확정 → ZCRM_ASSPTFEEH1 ASSPTFEE 30,000, MAXTECHPRICE 10,000, TRIPPRICE 20,000
+  4. 전표생성 → FI 금액 30,000 (5328170 / 260037 / 240074)
+  5. ZCRM060S → 합계금액 30,000
+  6. 회귀: 058A CT18 100187(일반) 재조회 → 5,000 그대로
+  7. 0 원 케이스: 기술료·출장비 없는 구독 상담(예 100241 / CT14) → 확정 시 메시지
+  8. 예산: 240074 × 5328150 10월 잔액(1,000,000 - 기존 35,000 - 30,000) 확인
+결과서  v1.02 에 E-20·E-23 재실행 + 1절의 비교표 삽입, FAIL내역 D-10 [해결].
+
+-------------------------------------------------------------------------------------
+4. 참고 - 기존 청구 프로그램과의 관계
+-------------------------------------------------------------------------------------
+ZCRM185(ZCRMR185, 온수매트 수리 비용처리)는 같은 기술료·출장비를 고객에게 '유상 청구' 한다:
+ZCRM_CICCOST_SUB 의 92000000(기술료)·92000001(출장비) 행을 판매오더 품목으로 만들고 조건 ZPR2 에 금액을 넣는다(F01 302~373).
+058S 는 대리점 '지급'(FI 공급업체 전표) 이라 오더 방식은 쓰지 않고, 금액 원천만 같게 가져간다.
+금액 일치: CICCOST_M-MAXTECHPRICE = SUB 92000000 COST, CICCOST_M-TRIPPRICE = SUB 92000001 COST (SE16N 표시는 /100).
+
+====================================================================
+[실제 반영 결과 2026-10-03~07 (이 문서는 제안서이며 아래가 KDQ 활성 상태)]
+ (1) DDIC: MAXTECHPRICE / TRIPPRICE 는 CURR 15,2 가 아니라 CURR 13,2, 참조 ZCRM_CICCOST_M-WAERS 로 활성화됨. 저장값은 KRW 내부값(10,000원 = 100.00) 이라 ASSPTFEE(원 단위 그대로)와 단위가 다름 → 결과서 D-13 권고.
+ (2) 060F01 금액 대체 블록은 1533~1567(FORM ZF_SUBS_FEE_TO_INT 2166~2197 호출), 058F01 ZF_APPLY_COST 1606~1625, 0원 제외 356~363, 확정 저장 392~397.
+ (3) 1차 반영분은 CURR 내부값을 TYPE i 에 그대로 더해 300 이 표시됨(D-11) → BAPI_CURRENCY_CONV_TO_EXTERNAL 환산 FORM 으로 수정.
+ (4) 테스트 계획 7단계(0원 대리점)는 혼합 선택(0원 + 금액 있음)까지 확인(R-18). 8단계 예산 잔액 계산은 10-01 전표(3100069959·965)를 빼먹었고 부가세 전/후가 섞여 있어 결과서에서는 COSP 차변/대변 누계로만 기록.
+ (5) 소스 검토 중 발견한 기존 결함: SET_FIDEL 이 취소 FM 결과를 검사하지 않음(D-14). 확정 뒤 060S 는 CIC 현재값을 표시(D-15).
+ 결과: results\SAP_KR_단위테스트케이스및결과서_SR03000035400_구독대리점비용정산_v1.02_20261007.xlsx

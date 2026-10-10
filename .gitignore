@@ -1,0 +1,19 @@
+# --- 로컬 전용 (PC 밖으로 내보내지 않음) ---
+scripts/config_local.txt
+# --- 실행 로그 / 대용량 증적 원본 (QA 데이터 덤프·PNG, 534MB) ---
+logs/
+results/shots/
+results/raw/
+results/_old/
+results/_work/
+results/archive_20260909/
+results/*.zip
+results/*.bak*
+results/*.xlsx.bak_before_failpic
+# --- 임시 ---
+*.tmp
+~$*
+# --- 결과서·docx·열람용 등 회사 데이터 산출물은 올리지 않음 (results 의 안내문 txt/md 만 포함) ---
+results/**
+!results/*.txt
+!results/*.md

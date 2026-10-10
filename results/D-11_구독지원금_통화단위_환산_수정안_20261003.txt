@@ -1,0 +1,122 @@
+﻿D-11  구독 지원금 금액 단위 불일치 (D-10 B안 후속)  -  2026-10-03 KDQ 210 재테스트에서 발견
+====================================================================================
+
+[현상]
+ 058S / 060S 에서 대리점 100085(상담 2026100290013, 기술료 10,000 + 출장비 20,000) 를 조회하면
+   기술료 10,000 / 출장비 20,000 은 맞게 보이는데  무상지원금액이 300 으로 표시된다. (기대 30,000)
+   - 058S: results\shots\S20_d10_058S_q1_requery.png
+   - 060S: results\shots\S20_d10_060S_q1_fee300.png  (기사별 금액 행·합계 행 모두 300)
+ 이대로 확정·전표를 만들면 ZCRM_ASSPTFEEH1-ASSPTFEE 300, FI 전표 300원이 된다. → 확정 전 단계에서 중단함.
+
+[원인]  형(type) 이 다른 필드끼리 그대로 더했다.
+ - ZCRM_CICCOST_M-MAXTECHPRICE / TRIPPRICE : CURR 13,2  참조통화 WAERS
+     KRW 는 소수점 0자리 통화라 SAP 내부값은 1/100 로 저장된다. 10,000원 = 내부 100.00, 20,000원 = 200.00
+     화면·SE16N 은 통화 환산(×100)해서 10,000 / 20,000 으로 보여 준다.
+     (058F01 1421~1424 set_currency_column('WAERS'), 060F01 879/886 CFIELDNAME 'WAERS')
+ - gt_data_total-assptfee (058F01 TOP 22행), gt_data1-assptfee (060 TOP 69행) : TYPE i  (원 단위 정수)
+     기존 건수×단가 계산도 정수 원 단위(5,000) 이고, 전표는 058F01 554 WRITE ... TO lv_wrbtr 로 그 값을 그대로 쓴다.
+ - 따라서  assptfee = maxtechprice + tripprice  →  100.00 + 200.00 = 300  (원 단위 30,000 이 아니라 300)
+   해당 줄: ZCRMR058_1F01 1618,  ZCRMR060_1F01 1543·1556
+
+[수정안]  통화 내부값 → 외부값(원 단위) 으로 환산해서 정수 필드에 넣는다. 공용 FORM 1개를 ZCRMR060_1F01 에 두고
+          058·060 세 곳에서 호출 (ZCRMR058_1 은 32행에서 zcrmr060_1f01 을 INCLUDE 하므로 공유 가능)
+
+(1) ZCRMR060_1F01  맨 끝에 FORM 추가
+----------------------------------------------------------------------
+*&---------------------------------------------------------------------*
+*&      Form  ZF_SUBS_FEE_TO_INT
+*&---------------------------------------------------------------------*
+*  SR03000035400 D-11 : 구독 지원금(원 단위 정수) = 기술료 + 출장비
+*  MAXTECHPRICE/TRIPPRICE 는 CURR(참조 WAERS) 라 KRW 내부값이 1/100
+*  (10,000원 = 100.00). ASSPTFEE 는 TYPE i 라 통화 외부값으로 환산해 넣는다.
+*----------------------------------------------------------------------*
+FORM zf_subs_fee_to_int USING    pv_tech  TYPE zcrm_ciccost_m-maxtechprice
+                                 pv_trip  TYPE zcrm_ciccost_m-tripprice
+                                 pv_waers TYPE waers
+                        CHANGING pv_fee   TYPE i.
+
+  DATA : lv_waers TYPE waers,
+         lv_int   TYPE bapicurr-bapicurr,
+         lv_ext   TYPE bapicurr-bapicurr.
+
+  lv_waers = pv_waers.
+  IF lv_waers IS INITIAL.
+    lv_waers = 'KRW'.
+  ENDIF.
+
+  lv_int = pv_tech + pv_trip.
+
+  CALL FUNCTION 'BAPI_CURRENCY_CONV_TO_EXTERNAL'
+    EXPORTING
+      currency        = lv_waers
+      amount_internal = lv_int
+    IMPORTING
+      amount_external = lv_ext.
+
+  pv_fee = lv_ext.
+
+ENDFORM.                    " ZF_SUBS_FEE_TO_INT
+----------------------------------------------------------------------
+
+(2) ZCRMR058_1F01  FORM zf_apply_cost  (현재 1617~1619)
+----------------------------------------------------------------------
+  [현재]
+**<<SR03000035400 D-10 (B안) 구독 지원금 = 기술료 + 출장비 (비용 행이 없으면 0)
+  gt_data_total-assptfee = gt_data_total-maxtechprice + gt_data_total-tripprice.
+**>>SR03000035400 D-10
+
+  [수정]
+**<<SR03000035400 D-10/D-11 (B안) 구독 지원금 = 기술료 + 출장비 (원 단위 환산, 비용 행이 없으면 0)
+  PERFORM zf_subs_fee_to_int USING    gt_data_total-maxtechprice
+                                      gt_data_total-tripprice
+                                      gt_data_total-waers
+                             CHANGING gt_data_total-assptfee.
+**>>SR03000035400 D-10/D-11
+----------------------------------------------------------------------
+
+(3) ZCRMR060_1F01  합계 행 (현재 1541~1544)  와  기사별 행 (현재 1554~1558)
+----------------------------------------------------------------------
+  [현재 1543]        gt_data1-assptfee = gt_data1-maxtechprice + gt_data1-tripprice.
+  [현재 1556]        gt_data1-assptfee = gt_data1-maxtechprice + gt_data1-tripprice.
+
+  [수정 - 두 곳 모두 같은 PERFORM 으로 교체]
+        PERFORM zf_subs_fee_to_int USING    gt_data1-maxtechprice
+                                            gt_data1-tripprice
+                                            gt_data1-waers
+                                   CHANGING gt_data1-assptfee.
+  (CLEAR night/deepnight/weekday/holiday 와 MODIFY gt_data1 은 그대로 둔다)
+----------------------------------------------------------------------
+
+(4) 바꾸지 않아도 되는 곳
+ - 058F01 357~358 0원 제외 판정 (maxtechprice + tripprice = 0) : 내부값끼리 비교라 그대로 맞다.
+ - 058F01 113~116 ELSE 분기, 392~397 확정 헤더 저장 : CURR→CURR 대입이라 그대로 맞다.
+ - 058F01 554 WRITE gt_data_total-assptfee TO lv_wrbtr CURRENCY waers : 정수 원 단위를 받으므로 그대로.
+
+[참고 - 권장하지 않는 간단 대안]
+  gt_data_total-assptfee = ( maxtechprice + tripprice ) * 100.
+  KRW 에서만 맞고 통화가 바뀌면 틀린다. BAPI_CURRENCY_CONV_TO_EXTERNAL 은 TCURX 를 보고 통화별로 환산한다.
+
+[기대 결과 (수정 후 KDQ 재테스트)]
+ 058S 100085 : 무상지원금액 30,000 / 기술료 10,000 / 출장비 20,000, 상태 빨강
+ 확정 → ZCRM_ASSPTFEEH1 S 행 ASSPTFEE 30,000.00 / MAXTECHPRICE 10,000 / TRIPPRICE 20,000
+ 전표 → BSEG 5328170 300.00(내부) = 30,000원, 공급업체 123085 300.00
+ 060S : 기사별 금액 행 30,000, 합계 30,000
+
+[현재 KDQ 데이터 상태 (2026-10-03 02:10)]
+ - 전표 3100069979 → 역분개 9930001233 (058S 전표삭제)
+ - 058S 구독 확정 취소 완료 → ZCRM_ASSPTFEEH1 2026.10/100085/S 행 없음, 화면 빨강
+ - ZCRM_CHRG_CNFRM 2026100290013 행은 취소를 위해 지웠다가 다시 넣음(2026.10 / 2026.10.02)
+ → 수정 이관 후 바로 조회 → 확정 → 전표 순서로 재테스트 가능
+====================================================================
+[수정 반영 확인 2026-10-03 02:09 KDQ / 재테스트 결과]
+ ZCRMR060_1F01 2166~2197 FORM ZF_SUBS_FEE_TO_INT, 호출 058F01 1618 / 060F01 1543·1559 - 반영 확인.
+ 058S 100085 재조회 30,000 → 확정(헤더 30,000.00 / 100.00 / 200.00) → 전표 3100069980(30,000) → 060S 30,000.
+ (위 "[현재 KDQ 데이터 상태]" 절은 02:10 시점 기록이며 그 뒤 013 은 확정·전표까지 진행됨)
+ 10-06 보완: 100005 에 상담 015(7,000/20,000) 추가 → 014(0/0) 와 합산 27,000 표시 확인(R-11), 060A 일반 상세 변경 없음(R-12).
+
+====================================================================
+[보충 2026-10-07 - 위 '기대 결과' 절과 실제의 차이]
+ - BSEG 5328170 은 300.00 이 아니라 세금코드 A1 로 부가세가 나뉘어 272.73(27,273원) + 1114100 매입세액 27.27(2,727원). 공급업체 123085 행만 300.00(30,000원). 이는 기존 전표(3100069979: 45.45 + 4.55)와 같은 구조.
+ - ZCRM_ASSPTFEEH1 의 MAXTECHPRICE / TRIPPRICE 는 SE16N 에 10,000 / 20,000 이 아니라 100.00 / 200.00 으로 보인다(KRW 내부값, 참조통화가 ZCRM_CICCOST_M-WAERS). ASSPTFEE 30,000.00 은 프로그램이 원 단위 정수를 그대로 넣은 값 → 한 행에 단위가 섞임(결과서 D-13 권고).
+ - 수정 후 줄 번호: ZF_APPLY_COST 1606~1625, 060F01 금액 블록 1533~1567, FORM ZF_SUBS_FEE_TO_INT 2166~2197. 환산 통화는 화면 상수 KRW(ZCRM_CICCOST_M-WAERS 는 전달되지 않음) → KRW 전제.
+ - 10-07 추가 확인: 전표삭제 → 재생성 3100069983(30,000), 058A 일반 쓰기 경로 변경 없음(3100069982 5,000), 확정 데이터 모드·지급대상데이터조회·상세리스트조회 정상.

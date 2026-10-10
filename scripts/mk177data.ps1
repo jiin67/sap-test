@@ -1,0 +1,75 @@
+# mk177data.ps1 : build the ZCRMR177_1 (ZCRM177A / ZCRM177AS) test data through S19_se16n_insert.vbs
+#   -Part svc | m | doc     (run one part at a time so a failure does not abort the rest)
+param([Parameter(Mandatory = $true)][ValidateSet('svc', 'm', 'doc', 'sub')][string]$Part)
+Set-Location C:\sap-test
+[Console]::OutputEncoding = [Text.Encoding]::GetEncoding(949)
+
+$SVCG = 'results\raw\S12_ZCRM_CICSVC_tpl_svc_gen.tsv'
+$SVCS = 'results\raw\S12_ZCRM_CICSVC_tpl_svc_sub.tsv'
+$TM = 'results\raw\S12_ZCRM_CICCOST_M_tpl_m.tsv'
+$TSUB = 'results\raw\S12_ZCRM_CICCOST_SUB_tpl_sub.tsv'
+$TADD = 'results\raw\S12_ZCRM_CICCOST_ADD_tpl_add.tsv'
+
+# common overrides for every ZCRM_CICSVC row
+$C = 'NAME1=ZTEST_20260919;CITY1=ZTEST_20260919;RSLTDATE=2026.09.19;REGDATE=2026.09.19;PRDDATE_NEW=2026.09.19;ERNAM=ZTEST0919;AENAM=ZTEST0919;ERDAT=2026.09.19;AEDAT=2026.09.19'
+$CM = 'CENTER_CD=CT04;CENTER_NM=ZTEST;TECHNAME=ZTEST;ERNAM=ZTEST0919;ERDAT=2026.09.19'
+
+function Svc($cs, $tpl, $ov) { "ins|ZCRM_CICSVC|$cs|$tpl|$C;$ov" }
+function M($cs, $ov) { "ins|ZCRM_CICCOST_M|$cs|$TM|$CM;$ov" }
+
+switch ($Part) {
+    'svc' {
+        $ops = @(
+            (Svc '2026091990001' $SVCG 'TAGNO=9401;SUBS_TYPE=;SUBSWRTMONTH=0;WRTDATE='),
+            (Svc '2026091990002' $SVCG 'TAGNO=9402;SUBS_TYPE=;SUBSWRTMONTH=0;WRTDATE='),
+            (Svc '2026091990003' $SVCS 'TAGNO=9403;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990005' $SVCS 'TAGNO=9405;SUBS_TYPE=S;SUBSWRTMONTH=0;WRTDATE=2026.09.19'),
+            (Svc '2026091990006' $SVCS 'TAGNO=9406;SUBS_TYPE=S;SUBSWRTMONTH=3;WRTDATE='),
+            (Svc '2026091990007' $SVCS 'CSLTNO_ITEM=1;TAGNO=9407;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990007' $SVCG 'CSLTNO_ITEM=2;TAGNO=9408;SUBS_TYPE=;SUBSWRTMONTH=0;WRTDATE='),
+            (Svc '2026091990008' $SVCS 'CSLTNO_ITEM=1;TAGNO=9409;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990008' $SVCS 'CSLTNO_ITEM=2;TAGNO=9410;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990009' $SVCS 'TAGNO=9411;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990010' $SVCS 'TAGNO=9412;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990011' $SVCG 'TAGNO=9413;SUBS_TYPE=X;SUBSWRTMONTH=0;WRTDATE='),
+            (Svc '2026091990012' $SVCS 'TAGNO=9414;SUBS_TYPE=S;SUBSWRTMONTH=12;WRTDATE=2027.09.19'),
+            (Svc '2026091990013' $SVCG 'TAGNO=9415;SUBS_TYPE=;SUBSWRTMONTH=0;WRTDATE=')
+        )
+        cscript //nologo scripts\S19_se16n_insert.vbs r177_svc @ops
+    }
+    'm' {
+        $ops = @(
+            (M '2026091990001' 'INDATE=2026.09.19;ISFREE=;TEXTINFO=ZTEST_20260919 A-general-paid'),
+            (M '2026091990002' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 B-general-free'),
+            (M '2026091990003' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 C-subs-after'),
+            (M '2026091990004' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 D-subs-neg-attempt'),
+            (M '2026091990005' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 E-subs-zero'),
+            (M '2026091990006' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 F-no-wrtdate'),
+            (M '2026091990007' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 G-mixed-items'),
+            (M '2026091990008' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 H-same-items'),
+            (M '2026091990009' 'INDATE=2026.09.17;ISFREE=Y;TEXTINFO=ZTEST_20260919 I-date-from'),
+            (M '2026091990010' 'INDATE=2026.09.16;ISFREE=Y;TEXTINFO=ZTEST_20260919 J-out-of-range'),
+            (M '2026091990012' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 L-doc-subs'),
+            (M '2026091990013' 'INDATE=2026.09.19;ISFREE=Y;TEXTINFO=ZTEST_20260919 M-doc-general')
+        )
+        cscript //nologo scripts\S19_se16n_insert.vbs r177_m @ops
+    }
+    'sub' {
+        # every case needs at least one ZCRM_CICCOST_SUB row with COST = 0,
+        # otherwise GET_DATA drops the 상담번호 ("올유상인건 지운다", ZCRMR177_1F01 165)
+        $ops = @('2026091990001', '2026091990002', '2026091990003', '2026091990004', '2026091990005',
+            '2026091990006', '2026091990007', '2026091990008', '2026091990009', '2026091990010' ) |
+        ForEach-Object { "ins|ZCRM_CICCOST_SUB|$_|$TSUB|ERNAM=ZTEST0919;ERDAT=2026.09.19" }
+        cscript //nologo scripts\S19_se16n_insert.vbs r177_sub @ops
+    }
+    'doc' {
+        $ops = @(
+            "ins|ZCRM_CICCOST_SUB|2026091990012|$TSUB|ERNAM=ZTEST0919;ERDAT=2026.09.19",
+            "ins|ZCRM_CICCOST_ADD|2026091990012|$TADD|NAME1=ZTEST_20260919;CITY1=ZTEST;ERNAM=ZTEST0919;ERDAT=2026.09.19",
+            "ins|ZCRM_CICCOST_SUB|2026091990013|$TSUB|ERNAM=ZTEST0919;ERDAT=2026.09.19",
+            "ins|ZCRM_CICCOST_ADD|2026091990013|$TADD|NAME1=ZTEST_20260919;CITY1=ZTEST;ERNAM=ZTEST0919;ERDAT=2026.09.19"
+        )
+        cscript //nologo scripts\S19_se16n_insert.vbs r177_doc @ops
+    }
+}
+"exit=$LASTEXITCODE"

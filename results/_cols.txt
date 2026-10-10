@@ -1,0 +1,45 @@
+CF_QTY	적합수량	기존+신규
+CONFDAT	적합판정일	기존+신규
+CSLTNO	상담번호	기존+신규
+CSYMP_T2	현장증상2	기존+신규
+HNCFRCD	H/C부적합사유	기존+신규
+HNCFRSN	H/C부적합사유명	기존+신규
+KUNNR_SVC	서비스점코드	기존+신규
+MAKTX_PRT	자재내역	기존+신규
+MATNR_BASE	기본자재내역	기존+신규
+MATNR_PRT	자재번호	기존+신규
+MATNR_PRT_OLD	구자재번호(회수품)	기존+신규
+MEINS	기본 단위	기존+신규
+MULTIKITYN	멀티킷 사용여부	신규만
+NCFT	적합구분	기존+신규
+NCF_QTY	부적합수량	기존+신규
+NCF_RSN_V	부적합사유	기존만
+NCF_RSN_VT	부적합사유	기존+신규
+PRDDATE_PRT	부품제조일	기존+신규
+PRDREQDATE	청구요청일	기존+신규
+PRDRETDATE	회수가능제조일	기존+신규
+PRICETYPET	서비스 처리결과	기존+신규
+RECPTDATE	접수일자	기존+신규
+RECPTNO	접수번호	기존+신규
+REMARK	비고	기존+신규
+REMARK1	접수부서	기존+신규
+REMARK2	접수자명	기존+신규
+REQNO	요청번호	기존+신규
+REQTYPE_T	청구유형	기존+신규
+RSLTDATE	서비스 조치일자	기존+신규
+RSPC	책임사업장	기존+신규
+RSPCT	책임사업장명	기존+신규
+SMATN	대체자재번호	기존+신규
+SMATNT	대체자재내역	기존+신규
+SMATN_OLD	구자재번호(대체품)	기존+신규
+SRV_QTY	요청수량	기존+신규
+STATUST	상태	신규만
+SUBS_TYPE	구독구분	신규만
+SUGRD	대체사유코드	기존+신규
+SUGRDT	대체사유명	기존+신규
+SVC_NAME2	서비스점	기존+신규
+TAGNO1	꼬리표NO	기존+신규
+TAGNO1_CHECKT	불일치유무	기존+신규
+VKBUR	센터코드	기존+신규
+VKBURT	센터명	기존+신규
+WEARDATS	회수품입고일자	기존+신규
